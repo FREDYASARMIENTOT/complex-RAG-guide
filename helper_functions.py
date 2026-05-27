@@ -15,7 +15,7 @@ import PyPDF2
 import pylcs
 import pandas as pd
 import dill
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 
 
 # =============================================================================
@@ -143,8 +143,8 @@ def extract_book_quotes_as_documents(documents, min_length=50):
         list: List of Document objects containing extracted quotes.
     """
     quotes_as_documents = []
-    # Pattern for quotes longer than min_length characters, including line breaks
-    quote_pattern_longer_than_min_length = re.compile(rf'"(.{{{min_length},}}?)"', re.DOTALL)
+    # Match straight or curly quoted passages longer than min_length characters.
+    quote_pattern_longer_than_min_length = re.compile(rf'["“](.{{{min_length},}}?)["”]', re.DOTALL)
 
     for doc in documents:
         content = doc.page_content
@@ -155,6 +155,16 @@ def extract_book_quotes_as_documents(documents, min_length=50):
             quote_doc = Document(page_content=quote)
             quotes_as_documents.append(quote_doc)
     
+    if quotes_as_documents:
+        return quotes_as_documents
+
+    # Some PDF extractions lose quotation marks. Fall back to substantial text
+    # passages so downstream quote retrieval still has a non-empty FAISS index.
+    for doc in documents:
+        content = doc.page_content.replace('\n', ' ').strip()
+        if len(content) >= min_length:
+            quotes_as_documents.append(Document(page_content=content[:1000]))
+
     return quotes_as_documents
 
 

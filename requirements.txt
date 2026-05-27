@@ -1,12 +1,14 @@
 langchain_together
-langchain_groq
+langchain-google-genai
 langchain
-langchain-community
+langchain-community==0.3.31
 langgraph
 datasets
 tqdm
-ragas
+ragas==0.2.15
 PyPDF2
 pylcs
 pypdf
 langchain_openai
+faiss-cpu
+pytest

@@ -1,0 +1,8 @@
+.conda/
+.tools/
+__pycache__/
+*.pyc
+RAG_pipeline.executed.ipynb
+chunks_vector_store/
+chapter_summaries_vector_store/
+book_quotes_vectorstore/
