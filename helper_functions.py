@@ -100,14 +100,20 @@ def text_wrap(text, width=120):
 
 def split_into_chapters(book_path):
     """
-    Splits a PDF book into chapters based on chapter title patterns.
+    Splits a PDF book into sections/chapters based on common heading patterns.
+
+    Supports multiple languages and formats:
+    - English: CHAPTER ONE, CHAPTER 1, etc.
+    - Spanish: CAPÍTULO UNO, CAPÍTULO 1, TÍTULO, SECCIÓN, ARTÍCULO, etc.
+    - Numbered sections: 1., 1.1, I., etc.
+    - Falls back to splitting by pages if no headings are found.
 
     Args:
         book_path (str): The path to the PDF book file.
 
     Returns:
-        list: A list of Document objects, each representing a chapter with its 
-              text content and chapter number metadata.
+        list: A list of Document objects, each representing a section with its 
+              text content and section number metadata.
     """
     with open(book_path, 'rb') as pdf_file:
         pdf_reader = PyPDF2.PdfReader(pdf_file)
@@ -116,17 +122,69 @@ def split_into_chapters(book_path):
         # Concatenate text from all pages
         text = " ".join([doc.extract_text() for doc in documents])
 
-        # Split text into chapters based on chapter title pattern
-        chapters = re.split(r'(CHAPTER\s[A-Z]+(?:\s[A-Z]+)*)', text)
+        # Try multiple heading patterns in order of specificity.
+        # The patterns use lookahead to keep the heading text.
+        patterns = [
+            # English: CHAPTER ONE, CHAPTER TWO, ...
+            r'(CHAPTER\s+[A-Z]+(?:\s+[A-Z]+)*)',
+            # English/Spanish: CHAPTER 1, CAPÍTULO 1, Chapter 1, etc.
+            r'((?:CHAPTER|CAPÍTULO|Chapter|Capítulo)\s+\d+)',
+            # Spanish legal/manual: TÍTULO, CAPÍTULO, SECCIÓN, ARTÍCULO (with optional number)
+            r'((?:TÍTULO|CAPÍTULO|SECCIÓN|ARTÍCULO|TITULO|CAPITULO|SECCION|ARTICULO)\s+(?:[IVXLCDM]+|\d+)[.:]?)',
+            # Numbered headings: 1., 2., 1.1, etc. (at start of semantic blocks)
+            r'(\n\s*\d+(?:\.\d+)*\s+(?:[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s]{4,}))',
+            # Roman numeral sections: I., II., III., etc.
+            r'(\n\s*[IVXLCDM]+\.?\s+(?:[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s]{4,}))',
+        ]
+
+        chapters = None
+        for pattern in patterns:
+            candidate = re.split(pattern, text)
+            # A successful split should produce at least 3 pieces
+            # (leading text, first heading, first body)
+            if len(candidate) >= 3:
+                chapters = candidate
+                break
+
+        # If no patterns matched, fall back to splitting by pages
+        if chapters is None:
+            chapter_docs = []
+            for i, doc in enumerate(documents):
+                page_text = doc.extract_text()
+                if page_text and page_text.strip():
+                    chapter_doc = Document(
+                        page_content=page_text,
+                        metadata={"chapter": i + 1}
+                    )
+                    chapter_docs.append(chapter_doc)
+            return chapter_docs
 
         # Create Document objects with chapter metadata
         chapter_docs = []
         chapter_num = 1
-        for i in range(1, len(chapters), 2):
-            chapter_text = chapters[i] + chapters[i + 1]  # Combine title and content
-            doc = Document(page_content=chapter_text, metadata={"chapter": chapter_num})
-            chapter_docs.append(doc)
-            chapter_num += 1
+        # The split result has a predictable structure:
+        # [pre-content, heading1, body1, heading2, body2, ...]
+        # We start at index 1 and step by 2 to get (heading, body) pairs.
+        for i in range(1, len(chapters) - 1, 2):
+            heading = chapters[i]
+            body = chapters[i + 1] if (i + 1) < len(chapters) else ""
+            chapter_text = heading + " " + body
+            if chapter_text.strip():
+                doc = Document(page_content=chapter_text, metadata={"chapter": chapter_num})
+                chapter_docs.append(doc)
+                chapter_num += 1
+
+        # If the split logic produced no documents (corner case),
+        # fall back to the page-by-page approach.
+        if not chapter_docs:
+            for i, doc in enumerate(documents):
+                page_text = doc.extract_text()
+                if page_text and page_text.strip():
+                    chapter_doc = Document(
+                        page_content=page_text,
+                        metadata={"chapter": i + 1}
+                    )
+                    chapter_docs.append(chapter_doc)
 
     return chapter_docs
 
